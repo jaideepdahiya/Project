@@ -1,6 +1,6 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {User} from "../models/user.model.js";
-import {uploadOnCloudinary} from "../utils/cloudinary.js";
+import {uploadFileOnCloudinary} from "../utils/cloudinary.js";
 import {apiError} from "../utils/apiError.js";
 import {apiResponse} from "../utils/apiResponse.js";
 
@@ -10,19 +10,27 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new apiError(400, "All fields are required")
     }
     // TODO: put some more validation on the input
-    const existedUser = User.findOne({ $or: [{email}, {username}]});
+    const existedUser = await User.findOne({ $or: [{email}, {username}]});
     if(existedUser){
         throw new apiError(409, "username already in use")
     }
-    // Check more about req.files
-    const avatarLocalPath = req.files?.avatar[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path;
-    if(!avatarLocalPath){
+    // TODO: Check more about req.files
+    // Avatar
+    let avatarLocalPath;
+    if (req.files && Array.isArray(req.files.avatar) && req.files.avatar.length > 0) {
+        avatarLocalPath = req.files.avatar[0].path;
+    } else {
         throw new apiError(400, "Avatar image is required");
     }
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath);
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    // Cover Image (optional)
+    let coverImageLocalPath;
+    if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
+
+    const avatar = await uploadFileOnCloudinary(avatarLocalPath);
+    const coverImage = await uploadFileOnCloudinary(coverImageLocalPath);
 
     if(!avatar){
         throw new apiError(500, "Uploading failed to cloudinary");
