@@ -6,3 +6,7 @@ const asyncHandler = (requestHandler) => {
 }
 
 export {asyncHandler}
+
+// asyncHandler is a wrapper for Express async route 
+// handlers that catches rejected promises and forwards 
+// errors to the error-handling middleware using next().
