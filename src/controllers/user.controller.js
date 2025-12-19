@@ -4,6 +4,20 @@ import {uploadFileOnCloudinary} from "../utils/cloudinary.js";
 import {apiError} from "../utils/apiError.js";
 import {apiResponse} from "../utils/apiResponse.js";
 
+const generateRefreshAndAccessToken = async(userID)=>{
+    try {
+        // TODO: try if we can directly pass the user instead of userID
+        const user = await User.findById(userID);
+        const refreshToken = user.generateRefreshToken();
+        const accessToken = user.generateAccessToken();
+        user.refreshToken = refreshToken;
+        await user.save({validateBeforeSave: false});
+        return {accessToken, refreshToken};
+    } catch (error) {
+        throw new apiError(500, "Something went wrong while generating tokens. ")
+    }
+}
+
 const registerUser = asyncHandler(async (req, res) => {
     const {fullName, email, username, password} = req.body;
     if([fullName, email, username, password].some((field)=>field?.trim()==="")){
@@ -57,4 +71,50 @@ const registerUser = asyncHandler(async (req, res) => {
 
 })
 
-export {registerUser};
+const loginUser = asyncHandler(async (req, res) => {
+    const {username, email, password} = req.body;
+    if(!(username || email)) throw new apiError(400, "Username or Email is required");
+    const user = await User.findOne({$or: [{email}, {username}]});
+    if(!user) throw new apiError(404, "User doesn't exist");
+    if(!(await user.isPasswordCorrect(password))) throw new apiError(401, "Username or Password incorrect");
+    const {refreshToken, accessToken} = await generateRefreshAndAccessToken(user._id);
+    // TODO: instead of querying again try to update the user itself
+    // make sur that you don't return the password and refresh token
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+    // Check about these options a little more
+    // these stop the frontend to modify the cookies
+    const options = {httpOnly: true, secure: true};
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken, options)
+    .cookie("refreshToken",refreshToken, options)
+    .json(
+        new apiResponse(
+            200, {
+                user: loggedInUser, accessToken, refreshToken
+                // sending tokens again even after setting in cookies
+                // because user may also want to store them
+                // not a good practice but needed sometimes
+            },
+            "User Logged in successfully"
+        )
+    )
+    
+})
+
+const logoutUser = asyncHandler(async(req, res) => {
+    await User.findByIdAndUpdate(req.user._id,{
+        $set : {refreshToken: undefined}
+    })
+    const options ={
+        httpOnly: true,
+        secure: true
+    }
+    res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new apiResponse(200, {}, "User logged out successfully"))
+})
+
+export {registerUser, loginUser, logoutUser};
